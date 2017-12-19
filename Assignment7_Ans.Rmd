@@ -95,7 +95,7 @@ post(c.tree1, file = "tree1.ps", title = "Level up: 1 - YES, 0 - NO")
 D1$pred <- predict(c.tree1, type = "prob")[,2]#Last class we used type = "class" which predicted the classification for us, this time we are using type = "prob" to see the probability that our classififcation is based on.
 
 #Plot the ROC curve
-pred.detail <- prediction(D1$pred, D1$level.up) 
+pred.detail <- prediction(D1$pred, D1$level.up)
 plot(performance(pred.detail, "tpr", "fpr"))
 abline(0, 1, lty = 2)
 
@@ -130,9 +130,18 @@ Therefore, model 2 is better since the area under the ROC curve is larger (1, wh
 
 # Thresholds
 ```{r}
-#Look at the ROC plot for your first model. Based on this plot choose a probability threshold that balances capturing the most correct predictions against false positives. Then generate a new variable in your data set that classifies each student according to your chosen threshold.
+#Look at the ROC plot for your first model. Based on this plot choose a probability threshold that balances capturing the most correct predictions against false positives.
 
-threshold.pred1 <- 0.22
+# However, if ROC plot only shows the true postive rate and false positive rate, but not the associated probability, some extra work must be done:
+p1 = ggplot(D1, aes(x=pred)) + geom_histogram(binwidth=0.1,colour="white")
+ggplotly()
+```
+
+Actually, only 4 values of probabilities exist in D1$pred and each generate a section of ROC curve from bottom left to top right. Therefore, I choose 0.5 as the thredhold.
+```{r}
+# Then generate a new variable in your data set that classifies each student according to your chosen threshold.
+
+threshold.pred1 <- 0.5
 
 #Now generate three diagnostics:
 
@@ -195,4 +204,4 @@ According to the result:
 
 2, Cohen's Kappa increases from threshold 1 to threshold 2, which indicates more model reliability.
 
-3, And threshold 2 also indicates higher true positive rate as well as higher false positive rate.
+3, And threshold 2 also gives higher true positive rate as well as higher false positive rate.
