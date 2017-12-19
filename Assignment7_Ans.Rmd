@@ -1,0 +1,198 @@
+---
+title: "Assignment 7"
+author: "Zhulin Yu"
+date: "12/18/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load Libraries
+```{r}
+library(reshape2)
+library(plotly)
+library(ggplot2)
+library(scater)
+library(ROCR)
+library(dplyr)
+library(tidyr)
+library(corrplot)
+library(rpart)
+```
+
+# Introduction to Dataset
+
+Data is from an one level of an online geography tutoring system used by 5th grade students. The game involves:
+
+A pre-test of geography knowledge (pre.test)
+
+A series of assignments for which you have the average score (av.assignment.score)
+
+The number of messages sent by each student to other students about the assignments (messages)
+
+The number of forum posts students posted asking questions about the assignment (forum.posts)
+
+A post test at the end of the level (post.test)
+
+Whether or not the system allowed the students to go on to the next level (level.up).
+
+# Upload data
+```{r}
+D1 = read.csv('online.data.csv')
+```
+
+# Visualization 
+```{r}
+# Start by creating histograms of the distributions for all variables (#HINT: look up "facet" in the ggplot documentation)
+# I plot them in one figure with "multiplot" from package "scater"
+hp1 <- ggplot(D1, aes(x=post.test.score)) + geom_histogram(binwidth=0.1,colour="white") + facet_grid(~level.up)
+
+hp2 <- ggplot(D1, aes(x=pre.test.score)) + geom_histogram(binwidth=0.1,colour="white") + facet_grid(~level.up)
+
+hp3 <- ggplot(D1, aes(x=messages)) + geom_histogram(binwidth=10,colour="white") + facet_grid(~level.up)
+
+hp4 <- ggplot(D1, aes(x=forum.posts)) + geom_histogram(binwidth=3,colour="white") + facet_grid(~level.up)
+
+hp5 <- ggplot(D1, aes(x=av.assignment.score)) + geom_histogram(binwidth=0.05,colour="white") + facet_grid(~level.up)
+
+multiplot(hp1, hp2, hp3, hp4, hp5, cols = 3)
+
+# Then visualize the relationships between variables with correlogram plot after removing id and converting level.up to numbers.
+D2 = select(D1, -c(id))
+D2$level.up = as.character(D2$level.up)
+D2$level.up[D2$level.up == "no"] = 0
+D2$level.up[D2$level.up == "yes"] = 1
+D2$level.up = as.numeric(D2$level.up)
+COR <- cor(D2)
+
+corrplot(COR, order="AOE", method="circle", tl.pos="lt", type="upper",        
+tl.col="black", tl.cex=0.6, tl.srt=45, 
+        addCoef.col="black", addCoefasPercent = TRUE,
+        sig.level=0.50, insig = "blank")
+```
+
+### Try to capture an intution about the data and the relationships
+First, if spilit data on level.up (yes or no), the distribution of all other variables show different patterns. At a glance, the "yes" group has higher post test score, # of messages, average assignment score, pre test score, and # of forum posts than the "no" group.
+
+Second, if looking at outcome variables (post test score and level.up), they are more correlated with average assignment scores and # of messages. Particularly, # of messages and post test score are strongly correlated.
+
+# Classification tree
+```{r}
+#Create a classification tree that predicts whether a student "levels up" in the online course using three variables of your choice (As we did last time, set all controls to their minimums)
+
+# Model 1, I use # of messages, # of forum posts and pre test score.
+c.tree1 <- rpart(level.up ~ messages + forum.posts + pre.test.score, method="class", data=D1, control=rpart.control(minsplit=2, minbucket=1))
+
+#Plot and generate a CP table for your tree 
+printcp(c.tree1)
+
+post(c.tree1, file = "tree1.ps", title = "Level up: 1 - YES, 0 - NO")
+
+#Generate a probability value that represents the probability that a student levels up based your classification tree
+
+D1$pred <- predict(c.tree1, type = "prob")[,2]#Last class we used type = "class" which predicted the classification for us, this time we are using type = "prob" to see the probability that our classififcation is based on.
+
+#Plot the ROC curve
+pred.detail <- prediction(D1$pred, D1$level.up) 
+plot(performance(pred.detail, "tpr", "fpr"))
+abline(0, 1, lty = 2)
+
+#Calculate the Area Under the Curve
+unlist(slot(performance(pred.detail,"auc"), "y.values"))#Unlist liberates the AUC value from the "performance" object created by ROCR
+
+#Now repeat this process with average assignment score and post test score.
+
+# Model 2, I use # of messages, # of forum posts and pre test score.
+c.tree2 <- rpart(level.up ~ av.assignment.score + post.test.score, method="class", data=D1, control=rpart.control(minsplit=2, minbucket=1))
+
+printcp(c.tree2)
+
+post(c.tree2, file = "tree2.ps", title = "Level up: 1 - YES, 0 - NO")
+
+D1$pred2 <- predict(c.tree2, type = "prob")[,2]
+
+pred2.detail <- prediction(D1$pred2, D1$level.up) 
+plot(performance(pred2.detail, "tpr", "fpr"))
+abline(0, 1, lty = 2)
+```
+
+#### Which one do you think was the better model? Why?
+```{r}
+unlist(slot(performance(pred.detail,"auc"), "y.values"))
+unlist(slot(performance(pred2.detail,"auc"), "y.values"))
+
+
+```
+
+Therefore, model 2 is better since the area under the ROC curve is larger (1, which indicates an excellent model, compared to model 1, 0.8825, which indicates a good model) and the turning point is sharper.
+
+# Thresholds
+```{r}
+#Look at the ROC plot for your first model. Based on this plot choose a probability threshold that balances capturing the most correct predictions against false positives. Then generate a new variable in your data set that classifies each student according to your chosen threshold.
+
+threshold.pred1 <- 0.22
+
+#Now generate three diagnostics:
+
+D1$pred_int = 0
+D1$pred_int[D1$pred >= threshold.pred1] = 1
+
+table1 = table(D1$pred_int, D1$level.up)
+
+# Accuracy = correct predictions / total predictions
+D1$accuracy.model1 <- (table1[1,1]+table1[2,2])/1000
+unique(D1$accuracy.model1)
+
+# Precision = True Pos. / (True Pos. + False Pos.)
+D1$precision.model1 <- table1[2,2]/(table1[2,2]+table1[2,1])
+unique(D1$precision.model1)
+
+# Recall = True Pos. / (True Pos. + False Neg.)
+D1$recall.model1 <- table1[2,2]/(table1[2,2]+table1[1,2])
+unique(D1$recall.model1)
+
+#Finally, calculate Kappa for your model according to:
+table1 <- table(D1$level.up, D1$pred_int)
+#Convert to matrix
+matrix1 <- as.matrix(table1)
+
+#Calculate kappa
+kappa(matrix1, exact = TRUE)/kappa(matrix1)
+```
+
+#### Now choose a different threshold (0.7) value and repeat these diagnostics.
+```{r}
+threshod2 = 0.7
+
+D1$pred_int_2 = 0
+D1$pred_int_2[D1$pred >= threshod2] = 1
+
+table2 = table(D1$pred_int_2, D1$level.up)
+
+D1$accuracy.model2 <- (table2[1,1]+table2[2,2])/1000
+unique(D1$accuracy.model2)
+
+D1$precision.model2 <- table2[2,2]/(table2[2,2]+table2[2,1])
+unique(D1$precision.model2)
+
+D1$recall.model2 <- table2[2,2]/(table2[2,2]+table2[1,2])
+unique(D1$recall.model2)
+
+#Finally, calculate Kappa for your model according to:
+table2 <- table(D1$level.up, D1$pred_int_2)
+#Convert to matrix
+matrix2 <- as.matrix(table2)
+
+#Calculate kappa
+kappa(matrix2, exact = TRUE)/kappa(matrix2)
+```
+
+According to the result:
+
+1, Accuracy and recall decrease from model 1 to model 2 (threshold 1 to threshold 2), while precision increase. That means threshold 2 gives a more "useful" model, while not necessarily represent the whole picture of the data.
+
+2, Cohen's Kappa increases from threshold 1 to threshold 2, which indicates more model reliability.
+
+3, And threshold 2 also indicates higher true positive rate as well as higher false positive rate.
