@@ -142,9 +142,23 @@ Actually, only 4 values of probabilities exist in D1$pred and each generate a se
 # Then generate a new variable in your data set that classifies each student according to your chosen threshold.
 
 threshold.pred1 <- 0.5
+```
 
-#Now generate three diagnostics:
+### Another ways to estimate the threshold
 
+The first one uses the "cost" function in ROCR (https://www.r-bloggers.com/a-small-introduction-to-the-rocr-package/), which finds the closest point to tpr=1 and fpr=0 (the top left corner). But it gave a wrong value here.
+
+The second one prints the content of the prediction object (https://stackoverflow.com/questions/16347507/obtaining-threshold-values-from-a-roc-curve) including all the cutoff points with associated fpr and tpr. So we can choose the cutoff point with eyes.
+
+```{r}
+# example of the second solution:
+perf = performance(pred.detail, "tpr", "fpr")
+cutoffs <- data.frame(cut=perf@alpha.values[[1]], fpr=perf@x.values[[1]], tpr=perf@y.values[[1]])
+cutoffs
+```
+
+# Now generate three diagnostics:
+```{r}
 D1$pred_int = 0
 D1$pred_int[D1$pred >= threshold.pred1] = 1
 
